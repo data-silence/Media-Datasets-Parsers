@@ -2,9 +2,11 @@ import asyncio
 import aiohttp
 import asyncpg
 
+import datetime as dt
 from bs4 import BeautifulSoup
 import random
 from loguru import logger
+import re
 import pandas as pd
 import dateparser
 
@@ -15,17 +17,17 @@ DB_HOST = "host"
 DB_PORT = 5432
 
 con = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-q = f"select url from news where agency = 'Lenta' and date::time = '00:00:00'"
+q = f"select url from bbc"
 
 links = pd.read_sql(sql=q, con=con).url.tolist()
 
 
 async def write_to_db(url, date):
     """Writes the news to the database"""
-    # logger.info(f"Writing {date} to database url {url}")
     conn = await asyncpg.connect(con)
-    await conn.fetch('UPDATE news SET date = $2 WHERE url=$1', url, date)
+    await conn.fetch('UPDATE bbc SET date = $2 WHERE url=$1', url, date)
     await conn.close()
+    # await asyncio.sleep(0.1)
 
 
 async def fetch_content(url, session):
@@ -38,17 +40,18 @@ async def fetch_content(url, session):
             answer = await response.text()
             soup = BeautifulSoup(answer, features="html.parser")
             try:
-                raw_time = soup.body.find(attrs={'class': 'topic-header__item topic-header__time'}).text
+                raw_time = soup.body.find(attrs={'class': 'bbc-1dafq0j e1mklfmt0'}).text
                 news_date = dateparser.parse(raw_time)
+                # print(news_date, links)
                 await write_to_db(url=url, date=news_date)
                 logger.info(f'{url} записан успешно')
-            except AttributeError as e:
-                logger.info(f'{url} не был записан')
-                # print(e)
+            except AttributeError:
+                pass
+
 
 
 async def main():
-    chunk = 50
+    chunk = 100
     tasks = []
     start = 0
 
@@ -65,8 +68,6 @@ async def main():
             await asyncio.sleep(0.2)
         start += chunk
         tasks = []
-        # except Exception as e:
-        #     logger.error(f'Ошибка обработки {el}/{times}')
 
 
 if __name__ == '__main__':
