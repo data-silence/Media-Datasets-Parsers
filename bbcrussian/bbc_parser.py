@@ -10,14 +10,15 @@ import re
 import pandas as pd
 import dateparser
 
-DB_NAME = 'name'
-DB_PASS = "pass"
-DB_USER = "user"
-DB_HOST = "host"
+# Database connection parameters
+DB_USER = 'DB_USER'
+DB_NAME = 'DB_NAME'
+DB_PASS = "DB_PASS"
+DB_HOST = "DB_HOST"
 DB_PORT = 5432
 
 con = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-q = f"select url from bbc"
+q = f"select url from bbc where date is null"
 
 links = pd.read_sql(sql=q, con=con).url.tolist()
 
@@ -31,7 +32,7 @@ async def write_to_db(url, date):
 
 
 async def fetch_content(url, session):
-    user_agents = open('proxy/user-agents.txt').read().splitlines()
+    user_agents = open('../Newsruilcom/proxy/user-agents.txt').read().splitlines()
     random_user_agent = random.choice(user_agents)
     headers = {'User-Agent': random_user_agent}
 
@@ -40,8 +41,11 @@ async def fetch_content(url, session):
             answer = await response.text()
             soup = BeautifulSoup(answer, features="html.parser")
             try:
-                raw_time = soup.body.find(attrs={'class': 'bbc-1dafq0j e1mklfmt0'}).text
-                news_date = dateparser.parse(raw_time)
+                raw_time = soup.body.find(attrs={'class': 'datestamp'}).text
+                raw_date = raw_time.split('\xa0')[1].strip()
+                date_string = (raw_date.split(', ')[1] + ' ' + raw_date.split(', ')[2].split('GMT ')[-1]).replace(
+                    ' MCK', '')
+                news_date = dateparser.parse(date_string)
                 # print(news_date, links)
                 await write_to_db(url=url, date=news_date)
                 logger.info(f'{url} записан успешно')
@@ -51,7 +55,7 @@ async def fetch_content(url, session):
 
 
 async def main():
-    chunk = 100
+    chunk = 50
     tasks = []
     start = 0
 
